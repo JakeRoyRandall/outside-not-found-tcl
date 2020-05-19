@@ -8,10 +8,13 @@ namespace eval Game {
     variable callLive 0
     variable mugAvailable 1
     variable cableAvailable 1
+    variable hintDepth 0
+    variable hintsUsed 0
+    variable moves 0
 
     proc reset {} {
-        variable room; variable inventory; variable plantAwake; variable routerOnline; variable callLive; variable mugAvailable; variable cableAvailable
-        set room living; set inventory {}; set plantAwake 0; set routerOnline 0; set callLive 0; set mugAvailable 1; set cableAvailable 1
+        variable room; variable inventory; variable plantAwake; variable routerOnline; variable callLive; variable mugAvailable; variable cableAvailable; variable hintDepth; variable hintsUsed; variable moves
+        set room living; set inventory {}; set plantAwake 0; set routerOnline 0; set callLive 0; set mugAvailable 1; set cableAvailable 1; set hintDepth 0; set hintsUsed 0; set moves 0; catch {unset ::Game::hintStage}
     }
     proc say {text} { puts $text }
     proc has {item} { variable inventory; expr {[lsearch -exact $inventory $item] >= 0} }
@@ -24,7 +27,7 @@ namespace eval Game {
         return $names($room)
     }
     proc look {} {
-        variable room; variable plantAwake; variable routerOnline; variable callLive
+        variable room; variable plantAwake; variable routerOnline; variable callLive; variable hintsUsed; variable moves
         say "\n== [title] =="
         switch -- $room {
             living { say "The video call is frozen. A houseplant wears the manager's headset. Doors lead to kitchen, office, and balcony." }
@@ -36,31 +39,47 @@ namespace eval Game {
         if {$callLive} { say "Jordan's face is back on screen. The meeting survives." }
     }
     proc go {destination} {
-        variable room
+        variable room; variable moves
         set destinations {living living kitchen kitchen office office balcony balcony}
         if {![dict exists $destinations $destination]} { say "You cannot go there from here. Try living, kitchen, office, or balcony."; return }
         if {$room ne "living" && $destination ne "living"} { say "Only the living room connects to that doorway."; return }
-        set room $destination; look
+        set room $destination; incr moves; look
     }
     proc take {item} {
-        variable room; variable mugAvailable; variable cableAvailable
-        if {$item eq "mug" && $room eq "kitchen" && $mugAvailable} { set mugAvailable 0; add mug; say "Taken: mug. It hums with lukewarm purpose."; return }
-        if {$item eq "cable" && $room eq "office" && $cableAvailable} { set cableAvailable 0; add cable; say "Taken: network cable. It has one job."; return }
+        variable room; variable mugAvailable; variable cableAvailable; variable moves
+        if {$item eq "mug" && $room eq "kitchen" && $mugAvailable} { set mugAvailable 0; add mug; incr moves; say "Taken: mug. It hums with lukewarm purpose."; return }
+        if {$item eq "cable" && $room eq "office" && $cableAvailable} { set cableAvailable 0; add cable; incr moves; say "Taken: network cable. It has one job."; return }
         say "That item is not here. Look around, or stop trying to steal the walls."
     }
     proc use {item} {
-        variable room; variable plantAwake; variable routerOnline; variable callLive
+        variable room; variable plantAwake; variable routerOnline; variable callLive; variable hintsUsed; variable moves
         if {![has $item]} { say "You are not carrying that."; return }
-        if {$item eq "mug" && $room eq "balcony"} { remove mug; set plantAwake 1; add leaf-key; say "You water the manager plant. It hands you a leaf-shaped key and schedules a 1:1."; return }
-        if {$item eq "leaf-key" && $room eq "office"} { remove leaf-key; set routerOnline 1; say "The leaf-key fits the router's tiny reset slot. The internet remembers you."; return }
-        if {$item eq "cable" && $room eq "office" && $routerOnline} { remove cable; set callLive 1; say "Cable connected. The video call returns: 'You're still on mute.' You win."; return }
+        if {$item eq "mug" && $room eq "balcony"} { remove mug; set plantAwake 1; add leaf-key; incr moves; say "You water the manager plant. It hands you a leaf-shaped key and schedules a 1:1."; return }
+        if {$item eq "leaf-key" && $room eq "office"} { remove leaf-key; set routerOnline 1; incr moves; say "The leaf-key fits the router's tiny reset slot. The internet remembers you."; return }
+        if {$item eq "cable" && $room eq "office" && $routerOnline} { remove cable; set callLive 1; incr moves; say "Cable connected. The video call returns: 'You're still on mute.' You win in $moves moves, with $hintsUsed hint(s) used."; return }
         say "That combination does nothing useful yet."
     }
     proc inventory {} {
         variable inventory
         if {[llength $inventory] == 0} { say "Inventory: empty, like your calendar after 4pm." } else { say "Inventory: [join $inventory {, }]" }
     }
-    proc help {} { say "Commands: look | go ROOM | take ITEM | use ITEM | inventory | restart | quit" }
+    proc help {} { say "Commands: look | go ROOM | take ITEM | use ITEM | inventory | hint | restart | quit" }
+    proc hint {} {
+        variable hintDepth; variable hintsUsed; variable plantAwake; variable routerOnline; variable callLive
+        if {$callLive} { say "No hint needed: the call is live."; return }
+        set stage mug
+        if {$plantAwake} { set stage router }
+        if {$routerOnline} { set stage cable }
+        if {![info exists ::Game::hintStage] || $::Game::hintStage ne $stage} { set ::Game::hintStage $stage; set hintDepth 0 }
+        if {$hintDepth < 2} { incr hintDepth; incr hintsUsed }
+        if {$stage eq "mug"} {
+            if {$hintDepth == 1} { say "Hint: something in the kitchen could help the thirsty manager." } else { say "Hint: go kitchen, take mug, then bring it to the balcony." }
+        } elseif {$stage eq "router"} {
+            if {$hintDepth == 1} { say "Hint: the leaf-key has one oddly specific destination." } else { say "Hint: take the leaf-key to the office router." }
+        } else {
+            if {$hintDepth == 1} { say "Hint: the office cable is waiting for a green light." } else { say "Hint: use cable in the office now that the router is online." }
+        }
+    }
 
     proc handle {line} {
         set words [regexp -all -inline {\S+} [string trim $line]]
@@ -74,7 +93,8 @@ namespace eval Game {
             take { if {$argumentCount != 2} { say "take takes one item." } else { take $argument } }
             use { if {$argumentCount != 2} { say "use takes one item." } else { use $argument } }
             inventory { if {$argumentCount != 1} { say "inventory takes no arguments." } else { inventory } }
-            help { if {$argumentCount != 1} { say "help takes no arguments." } else { help } }
+            help { if {$argumentCount != 1} { say "help takes no arguments." } else { help; say "Hint gives two progressive nudges for the current puzzle step." } }
+            hint { if {$argumentCount != 1} { say "hint takes no arguments." } else { hint } }
             restart { reset; say "Fresh meeting, fresh hope."; look }
             quit - exit { return 0 }
             default { say "Unknown command. Type help for the tiny command list." }

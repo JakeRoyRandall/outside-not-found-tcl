@@ -30,6 +30,13 @@ set restart [runGame $app "go kitchen\ntake mug\nrestart\ninventory\nquit"]
 assertContains $restart "Fresh meeting" restart-message
 assertContains $restart "Inventory: empty" restart-clears-state
 assertContains [runGame $app "go kitchen\ntake mug\nrestart\ngo kitchen\ntake mug\nquit"] "Taken: mug" restart-restores-items
+set hints [runGame $app "hint\nhint\nhint\ngo kitchen\ntake mug\ngo living\ngo balcony\nuse mug\nhint\nrestart\nhint\nquit"]
+assertContains $hints "something in the kitchen" first-hint
+assertContains $hints "go kitchen, take mug" second-hint
+assertContains $hints "leaf-key" stage-reset-hint
+if {[string first "with 0 hint" $hints] >= 0} { error "hint counter did not increment" }
+set victory [runGame $app "go kitchen\ntake mug\ngo living\ngo balcony\nuse mug\ngo living\ngo office\ntake cable\nuse leaf-key\nuse cable\nquit"]
+assertContains $victory "You win in 10 moves, with 0 hint(s) used" victory-summary
 set eof [runGame $app "look"]
 assertContains $eof "Session closed" eof-closes
 puts "Tcl escape-room checks passed"
