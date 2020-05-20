@@ -37,6 +37,40 @@ assertContains $hints "leaf-key" stage-reset-hint
 if {[string first "with 0 hint" $hints] >= 0} { error "hint counter did not increment" }
 set victory [runGame $app "go kitchen\ntake mug\ngo living\ngo balcony\nuse mug\ngo living\ngo office\ntake cable\nuse leaf-key\nuse cable\nquit"]
 assertContains $victory "You win in 10 moves, with 0 hint(s) used" victory-summary
+set savePath [file join [pwd] "test-save-[pid].dat"]
+set saved [runGame $app "go kitchen\ntake mug\nsave $savePath\nrestart\nload $savePath\ninventory\nquit"]
+assertContains $saved "Game saved" save-success
+assertContains $saved "Game loaded" load-success
+assertContains $saved "Inventory: mug" partial-roundtrip
+set finished [runGame $app "go kitchen\ntake mug\ngo living\ngo balcony\nuse mug\ngo living\ngo office\ntake cable\nuse leaf-key\nuse cable\nsave $savePath\nrestart\nload $savePath\nquit"]
+assertContains $finished "You win in 10 moves" finish-roundtrip
+file delete -force $savePath
+set corruptPath [file join [pwd] "test-corrupt-[pid].dat"]
+set corrupt [open $corruptPath w]; puts -nonewline $corrupt "puts HACKED"; close $corrupt
+set rejected [runGame $app "go kitchen\ntake mug\nload $corruptPath\ninventory\nquit"]
+assertContains $rejected "Load error" corrupt-rejected
+assertContains $rejected "Inventory: mug" failed-load-preserves-state
+if {[string first "HACKED" $rejected] >= 0} { error "save content was evaluated" }
+file delete -force $corruptPath
+set upperPath [file join [pwd] "Test-Save-[pid].DAT"]
+set upper [runGame $app "go kitchen\ntake mug\nsave $upperPath\nrestart\nload $upperPath\ninventory\nquit"]
+assertContains $upper "Inventory: mug" uppercase-path
+file delete -force $upperPath
+set stagePath [file join [pwd] "test-stage-[pid].dat"]
+set staged [runGame $app "hint\ngo kitchen\ntake mug\ngo living\ngo balcony\nuse mug\nsave $stagePath\nrestart\nload $stagePath\nhint\nquit"]
+assertContains $staged "leaf-key has one oddly specific destination" stage-transition-hint-resets
+file delete -force $stagePath
+set badPath [file join [pwd] "test-invalid-[pid].dat"]
+set bad [open $badPath w]; puts -nonewline $bad "schema 1 room living inventory {mug mug} plantAwake 0 routerOnline 0 callLive 0 mugAvailable 1 cableAvailable 1 hintDepth 0 hintsUsed 0 moves 0 hintStage mug"; close $bad
+set invalid [runGame $app "go kitchen\ntake mug\nload $badPath\ninventory\nquit"]
+assertContains $invalid "Load error" invariant-rejected
+assertContains $invalid "Inventory: mug" invariant-preserves-state
+file delete -force $badPath
+set hugePath [file join [pwd] "test-huge-[pid].dat"]
+set huge [open $hugePath w]; puts -nonewline $huge [string repeat x 9000]; close $huge
+set oversized [runGame $app "load $hugePath\nquit"]
+assertContains $oversized "Load error" oversized-rejected
+file delete -force $hugePath
 set eof [runGame $app "look"]
 assertContains $eof "Session closed" eof-closes
 puts "Tcl escape-room checks passed"

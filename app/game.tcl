@@ -63,7 +63,58 @@ namespace eval Game {
         variable inventory
         if {[llength $inventory] == 0} { say "Inventory: empty, like your calendar after 4pm." } else { say "Inventory: [join $inventory {, }]" }
     }
-    proc help {} { say "Commands: look | go ROOM | take ITEM | use ITEM | inventory | hint | restart | quit" }
+    proc help {} { say "Commands: look | go ROOM | take ITEM | use ITEM | inventory | hint | save PATH | load PATH | restart | quit" }
+    proc stateData {} {
+        variable room; variable inventory; variable plantAwake; variable routerOnline; variable callLive; variable mugAvailable; variable cableAvailable; variable hintDepth; variable hintsUsed; variable moves; variable hintStage
+        set stage "mug"; if {$plantAwake} { set stage "router" }; if {$routerOnline} { set stage "cable" }
+        set storedDepth $hintDepth; if {![info exists hintStage] || $hintStage ne $stage} { set storedDepth 0 }
+        return [dict create schema 1 room $room inventory $inventory plantAwake $plantAwake routerOnline $routerOnline callLive $callLive mugAvailable $mugAvailable cableAvailable $cableAvailable hintDepth $storedDepth hintsUsed $hintsUsed moves $moves hintStage $stage]
+    }
+    proc validBool {value} { expr {[string is integer -strict $value] && ($value == 0 || $value == 1)} }
+    proc validateState {data} {
+        foreach key {schema room inventory plantAwake routerOnline callLive mugAvailable cableAvailable hintDepth hintsUsed moves hintStage} { if {[catch {dict get $data $key}]} { error "save is missing $key" } }
+        if {[dict get $data schema] ne "1"} { error "unsupported save schema" }
+        if {[lsearch -exact {living kitchen office balcony} [dict get $data room]] < 0} { error "save has an invalid room" }
+        set items [dict get $data inventory]
+        if {[llength $items] > 4} { error "save inventory is too large" }
+        foreach item $items { if {[lsearch -exact {mug cable leaf-key} $item] < 0} { error "save has an invalid item" } }
+        if {[llength [lsort -unique $items]] != [llength $items]} { error "save inventory has duplicates" }
+        if {![validBool [dict get $data plantAwake]] || ![validBool [dict get $data routerOnline]] || ![validBool [dict get $data callLive]] || ![validBool [dict get $data mugAvailable]] || ![validBool [dict get $data cableAvailable]]} { error "save has an invalid flag" }
+        foreach key {hintDepth hintsUsed moves} { set value [dict get $data $key]; if {![string is integer -strict $value] || $value < 0} { error "save has an invalid counter" } }
+        if {[dict get $data hintDepth] > 2 || [dict get $data hintsUsed] > 100 || [dict get $data moves] > 10000} { error "save counters exceed limits" }
+        if {[dict get $data plantAwake] && [lsearch -exact $items mug] >= 0} { error "save puzzle state is inconsistent" }
+        if {[dict get $data routerOnline] && ![dict get $data plantAwake]} { error "save puzzle state is inconsistent" }
+        if {[dict get $data routerOnline] && [lsearch -exact $items leaf-key] >= 0} { error "save puzzle state is inconsistent" }
+        if {[dict get $data callLive] && ![dict get $data routerOnline]} { error "save puzzle state is inconsistent" }
+        set stage "mug"; if {[dict get $data plantAwake]} { set stage "router" }; if {[dict get $data routerOnline]} { set stage "cable" }
+        if {[dict get $data hintStage] ne $stage} { error "save hint stage is inconsistent" }
+        if {[dict get $data hintStage] ni {mug router cable}} { error "save has an invalid hint stage" }
+        if {[dict get $data plantAwake] && ![dict get $data routerOnline] && [lsearch -exact $items leaf-key] < 0} { error "save puzzle state is missing leaf-key" }
+        if {[dict get $data mugAvailable] == 0 && [lsearch -exact $items mug] < 0 && ![dict get $data plantAwake]} { error "save puzzle state is missing mug" }
+        if {[dict get $data cableAvailable] == 0 && [lsearch -exact $items cable] < 0 && ![dict get $data callLive]} { error "save puzzle state is missing cable" }
+        if {[dict get $data mugAvailable] != (![dict get $data plantAwake] && [lsearch -exact $items mug] < 0)} { error "save mug availability is inconsistent" }
+        if {[dict get $data cableAvailable] != (![dict get $data callLive] && [lsearch -exact $items cable] < 0)} { error "save cable availability is inconsistent" }
+        if {([lsearch -exact $items leaf-key] >= 0) != ([dict get $data plantAwake] && ![dict get $data routerOnline])} { error "save leaf-key is inconsistent" }
+        if {[dict get $data callLive] && [lsearch -exact $items cable] >= 0} { error "save retains a connected cable" }
+        return 1
+    }
+    proc saveState {path} {
+        if {$path eq ""} { error "save needs a path" }
+        set temp "${path}.tmp-[pid]"
+        set channel [open $temp {WRONLY CREAT EXCL}]
+        if {[catch {puts -nonewline $channel [stateData]; close $channel; file rename -force $temp $path} error]} {
+            catch {close $channel}; catch {file delete -force $temp}; error $error
+        }
+    }
+    proc loadState {path} {
+        if {$path eq ""} { error "load needs a path" }
+        if {![file exists $path] || [file size $path] > 8192} { error "save is missing or too large" }
+        set channel [open $path r]; set raw [read $channel 8192]; close $channel
+        if {[catch {dict size $raw}]} { error "save is not a valid state dict" }
+        validateState $raw
+        variable room; variable inventory; variable plantAwake; variable routerOnline; variable callLive; variable mugAvailable; variable cableAvailable; variable hintDepth; variable hintsUsed; variable moves; variable hintStage
+        set room [dict get $raw room]; set inventory [dict get $raw inventory]; set plantAwake [dict get $raw plantAwake]; set routerOnline [dict get $raw routerOnline]; set callLive [dict get $raw callLive]; set mugAvailable [dict get $raw mugAvailable]; set cableAvailable [dict get $raw cableAvailable]; set hintDepth [dict get $raw hintDepth]; set hintsUsed [dict get $raw hintsUsed]; set moves [dict get $raw moves]; set hintStage [dict get $raw hintStage]
+    }
     proc hint {} {
         variable hintDepth; variable hintsUsed; variable plantAwake; variable routerOnline; variable callLive
         if {$callLive} { say "No hint needed: the call is live."; return }
@@ -84,17 +135,20 @@ namespace eval Game {
     proc handle {line} {
         set words [regexp -all -inline {\S+} [string trim $line]]
         set command [string tolower [lindex $words 0]]
-        set argument [string tolower [lindex $words 1]]
+        set argument [lindex $words 1]
+        set normalizedArgument [string tolower $argument]
         set argumentCount [llength $words]
         if {$argumentCount == 0} { return 1 }
         switch -- $command {
             look { if {$argumentCount != 1} { say "look takes no arguments." } else { look } }
-            go { if {$argumentCount != 2} { say "go takes one room." } else { go $argument } }
-            take { if {$argumentCount != 2} { say "take takes one item." } else { take $argument } }
-            use { if {$argumentCount != 2} { say "use takes one item." } else { use $argument } }
+            go { if {$argumentCount != 2} { say "go takes one room." } else { go $normalizedArgument } }
+            take { if {$argumentCount != 2} { say "take takes one item." } else { take $normalizedArgument } }
+            use { if {$argumentCount != 2} { say "use takes one item." } else { use $normalizedArgument } }
             inventory { if {$argumentCount != 1} { say "inventory takes no arguments." } else { inventory } }
             help { if {$argumentCount != 1} { say "help takes no arguments." } else { help; say "Hint gives two progressive nudges for the current puzzle step." } }
             hint { if {$argumentCount != 1} { say "hint takes no arguments." } else { hint } }
+            save { if {$argumentCount != 2} { say "save takes one path." } else { if {[catch {saveState $argument} error]} { say "Save error: $error" } else { say "Game saved." } } }
+            load { if {$argumentCount != 2} { say "load takes one path." } else { if {[catch {loadState $argument} error]} { say "Load error: $error" } else { say "Game loaded."; look } } }
             restart { reset; say "Fresh meeting, fresh hope."; look }
             quit - exit { return 0 }
             default { say "Unknown command. Type help for the tiny command list." }

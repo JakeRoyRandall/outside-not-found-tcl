@@ -10,7 +10,7 @@ Run it with the installed Tcl 8.5 interpreter:
 /usr/bin/tclsh app/game.tcl
 ```
 
-Commands: `look`, `go ROOM`, `take ITEM`, `use ITEM`, `inventory`, `hint`, `restart`, `help`, `quit`. `hint` gives two progressive nudges for the current puzzle step, and the winning line reports successful moves and hints used. The parser treats player input as data and never evaluates it as Tcl code. EOF closes the session safely.
+Commands: `look`, `go ROOM`, `take ITEM`, `use ITEM`, `inventory`, `hint`, `save PATH`, `load PATH`, `restart`, `help`, `quit`. `hint` gives two progressive nudges for the current puzzle step, and the winning line reports successful moves and hints used. Save files are bounded, versioned Tcl dict data; they are never sourced or evaluated. Paths are one token with no spaces. The parser treats player input as data and never evaluates it as Tcl code. EOF closes the session safely.
 
 Run tests:
 
