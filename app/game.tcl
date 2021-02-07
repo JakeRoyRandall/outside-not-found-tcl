@@ -63,7 +63,21 @@ namespace eval Game {
         variable inventory
         if {[llength $inventory] == 0} { say "Inventory: empty, like your calendar after 4pm." } else { say "Inventory: [join $inventory {, }]" }
     }
-    proc help {} { say "Commands: look | go ROOM | take ITEM | use ITEM | inventory | hint | save PATH | load PATH | restart | quit" }
+    proc journal {} {
+        variable plantAwake; variable routerOnline; variable callLive; variable inventory
+        say "JOURNAL"
+        say "Observed clues:"
+        say "- The video call is frozen."
+        say "- The apartment has a kitchen, office, and balcony."
+        if {[llength $inventory] > 0} { say "Carrying: [join $inventory {, }]" } else { say "Carrying: nothing" }
+        say "Completed objectives:"
+        set completed 0
+        if {$plantAwake} { say "- Watered the manager plant."; incr completed }
+        if {$routerOnline} { say "- Reset the router with the leaf-key."; incr completed }
+        if {$callLive} { say "- Reconnected the video call."; incr completed }
+        if {!$completed} { say "- None yet (the journal keeps its secrets)." }
+    }
+    proc help {} { say "Commands: look | go ROOM | take ITEM | use ITEM | inventory | journal | hint | save PATH | load PATH | restart | quit" }
     proc stateData {} {
         variable room; variable inventory; variable plantAwake; variable routerOnline; variable callLive; variable mugAvailable; variable cableAvailable; variable hintDepth; variable hintsUsed; variable moves; variable hintStage
         set stage "mug"; if {$plantAwake} { set stage "router" }; if {$routerOnline} { set stage "cable" }
@@ -145,6 +159,7 @@ namespace eval Game {
             take { if {$argumentCount != 2} { say "take takes one item." } else { take $normalizedArgument } }
             use { if {$argumentCount != 2} { say "use takes one item." } else { use $normalizedArgument } }
             inventory { if {$argumentCount != 1} { say "inventory takes no arguments." } else { inventory } }
+            journal { if {$argumentCount != 1} { say "journal takes no arguments." } else { journal } }
             help { if {$argumentCount != 1} { say "help takes no arguments." } else { help; say "Hint gives two progressive nudges for the current puzzle step." } }
             hint { if {$argumentCount != 1} { say "hint takes no arguments." } else { hint } }
             save { if {$argumentCount != 2} { say "save takes one path." } else { if {[catch {saveState $argument} error]} { say "Save error: $error" } else { say "Game saved." } } }

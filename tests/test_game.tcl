@@ -26,6 +26,17 @@ assertContains $parser "not here" repeated-take
 assertContains $parser "look takes no arguments" extra-arguments
 assertContains $parser "use takes one item" injection-is-data
 if {[string first "HACKED" $parser] >= 0} { error "parser executed injection text" }
+set freshJournal [runGame $app "journal\nquit"]
+assertContains $freshJournal "JOURNAL" journal-command
+assertContains $freshJournal "None yet" journal-no-progress
+if {[string first "leaf-key" $freshJournal] >= 0 || [string first "router" $freshJournal] >= 0 || [string first "cable" $freshJournal] >= 0} { error "fresh journal revealed an unseen solution" }
+set progressJournal [runGame $app "go kitchen\ntake mug\ngo living\ngo balcony\nuse mug\njournal\nquit"]
+assertContains $progressJournal "Watered the manager plant" journal-progress
+assertContains $progressJournal "leaf-key" journal-inventory
+set journalSave [file join [pwd] "test-journal-[pid].dat"]
+set journalRoundtrip [runGame $app "go kitchen\ntake mug\ngo living\ngo balcony\nuse mug\nsave $journalSave\nrestart\nload $journalSave\njournal\nquit"]
+assertContains $journalRoundtrip "Watered the manager plant" journal-save-load
+file delete -force $journalSave
 set restart [runGame $app "go kitchen\ntake mug\nrestart\ninventory\nquit"]
 assertContains $restart "Fresh meeting" restart-message
 assertContains $restart "Inventory: empty" restart-clears-state
