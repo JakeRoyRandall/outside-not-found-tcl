@@ -63,6 +63,29 @@ namespace eval Game {
         variable inventory
         if {[llength $inventory] == 0} { say "Inventory: empty, like your calendar after 4pm." } else { say "Inventory: [join $inventory {, }]" }
     }
+    proc examine {target} {
+        variable room; variable plantAwake; variable routerOnline; variable callLive; variable mugAvailable; variable cableAvailable
+        set target [string tolower $target]
+        if {$target in {call video video-call}} {
+            if {$room eq "living"} { if {$callLive} { say "Jordan's face is back on screen, no longer frozen. The meeting survives." } else { say "The frozen call shows Jordan mid-blink. The meeting is waiting for one small miracle." }; return }
+        }
+        if {$target in {plant houseplant manager}} {
+            if {$room in {living balcony}} { if {$plantAwake} { say "The manager plant is alert, leafy, and taking notes." } else { say "The manager plant is wilted and judging your hydration choices." }; return }
+        }
+        if {$target in {mug cup}} {
+            if {[has mug] || ($room eq "kitchen" && $mugAvailable)} { say "The mug reads WORLD'S OKAYEST REMOTE WORKER. It is sturdy enough for a small rescue mission."; return }
+        }
+        if {$target in {kettle}} { if {$room eq "kitchen"} { say "The kettle has seen things. It offers warmth, but no useful plan."; return } }
+        if {$target in {laptop computer}} { if {$room eq "office"} { if {$callLive} { say "The laptop shows Jordan's live video call. It is still on mute, naturally." } else { say "The laptop insists: 404: OUTSIDE NOT FOUND. It is connected to hope by implication only." }; return } }
+        if {$target in {cable network-cable}} {
+            if {[has cable] || ($room eq "office" && $cableAvailable)} { say "The network cable has two ends and exactly one job: connect something."; return }
+        }
+        if {$target in {router modem}} {
+            if {$room eq "office"} { if {$routerOnline} { say "The router light is green. It looks smug." } else { say "The router has a tiny reset slot and the expression of a device awaiting a precise key." }; return }
+        }
+        if {$target in {leaf-key key}} { if {[has leaf-key]} { say "The leaf-key is shaped like a plant leaf. It feels purpose-built, but refuses to explain itself."; return } }
+        say "You cannot examine that here. Look around or examine something visible or carried."
+    }
     proc journal {} {
         variable plantAwake; variable routerOnline; variable callLive; variable inventory
         say "JOURNAL"
@@ -77,7 +100,7 @@ namespace eval Game {
         if {$callLive} { say "- Reconnected the video call."; incr completed }
         if {!$completed} { say "- None yet (the journal keeps its secrets)." }
     }
-    proc help {} { say "Commands: look | go ROOM | take ITEM | use ITEM | inventory | journal | hint | save PATH | load PATH | restart | quit" }
+    proc help {} { say "Commands: look | examine TARGET | go ROOM | take ITEM | use ITEM | inventory | journal | hint | save PATH | load PATH | restart | quit" }
     proc stateData {} {
         variable room; variable inventory; variable plantAwake; variable routerOnline; variable callLive; variable mugAvailable; variable cableAvailable; variable hintDepth; variable hintsUsed; variable moves; variable hintStage
         set stage "mug"; if {$plantAwake} { set stage "router" }; if {$routerOnline} { set stage "cable" }
@@ -155,6 +178,7 @@ namespace eval Game {
         if {$argumentCount == 0} { return 1 }
         switch -- $command {
             look { if {$argumentCount != 1} { say "look takes no arguments." } else { look } }
+            examine { if {$argumentCount != 2} { say "examine takes one target." } else { examine $normalizedArgument } }
             go { if {$argumentCount != 2} { say "go takes one room." } else { go $normalizedArgument } }
             take { if {$argumentCount != 2} { say "take takes one item." } else { take $normalizedArgument } }
             use { if {$argumentCount != 2} { say "use takes one item." } else { use $normalizedArgument } }

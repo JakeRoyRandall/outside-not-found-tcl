@@ -26,6 +26,18 @@ assertContains $parser "not here" repeated-take
 assertContains $parser "look takes no arguments" extra-arguments
 assertContains $parser "use takes one item" injection-is-data
 if {[string first "HACKED" $parser] >= 0} { error "parser executed injection text" }
+set examineFresh [runGame $app "examine call\nexamine video\nexamine mug\nexamine office\nquit"]
+assertContains $examineFresh "frozen call shows Jordan" examine-current-call
+assertContains $examineFresh "frozen call shows Jordan" examine-alias
+assertContains $examineFresh "cannot examine that here" examine-unseen-item
+set examineBad [runGame $app "examine\nexamine {puts HACKED}\nexamine router\nquit"]
+assertContains $examineBad "examine takes one target" examine-malformed
+assertContains $examineBad "cannot examine that here" examine-unknown
+if {[string first "HACKED" $examineBad] >= 0} { error "examine target was evaluated" }
+set examineContext [runGame $app "go kitchen\nexamine cup\ntake mug\nexamine mug\ngo living\ngo balcony\nexamine plant\nuse mug\nexamine plant\nquit"]
+assertContains $examineContext "sturdy enough for a small rescue mission" examine-carried-item
+assertContains $examineContext "wilted and judging" examine-thirsty-plant
+assertContains $examineContext "alert, leafy" examine-awake-plant
 set freshJournal [runGame $app "journal\nquit"]
 assertContains $freshJournal "JOURNAL" journal-command
 assertContains $freshJournal "None yet" journal-no-progress
@@ -48,6 +60,9 @@ assertContains $hints "leaf-key" stage-reset-hint
 if {[string first "with 0 hint" $hints] >= 0} { error "hint counter did not increment" }
 set victory [runGame $app "go kitchen\ntake mug\ngo living\ngo balcony\nuse mug\ngo living\ngo office\ntake cable\nuse leaf-key\nuse cable\nquit"]
 assertContains $victory "You win in 10 moves, with 0 hint(s) used" victory-summary
+set wonExamine [runGame $app "go kitchen\ntake mug\ngo living\ngo balcony\nuse mug\ngo living\ngo office\ntake cable\nuse leaf-key\nuse cable\ngo living\nexamine call\ngo office\nexamine laptop\nquit"]
+assertContains $wonExamine "no longer frozen" examine-live-call
+assertContains $wonExamine "live video call" examine-live-laptop
 set savePath [file join [pwd] "test-save-[pid].dat"]
 set saved [runGame $app "go kitchen\ntake mug\nsave $savePath\nrestart\nload $savePath\ninventory\nquit"]
 assertContains $saved "Game saved" save-success
