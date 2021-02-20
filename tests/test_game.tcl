@@ -137,4 +137,19 @@ assertContains $oversized "Load error" oversized-rejected
 file delete -force $hugePath
 set eof [runGame $app "look"]
 assertContains $eof "Session closed" eof-closes
+set historyPath [file join [pwd] "secret-path-[pid].dat"]
+set history [runGame $app "look\ngo kitchen\ntake mug\nsave $historyPath\nload $historyPath\nhistory\nhistory clear\nhistory\nquit"]
+assertContains $history "COMMAND HISTORY" history-list
+assertContains $history "save PATH-REDACTED" history-redacts-save-path
+if {[string first $historyPath $history] >= 0} { error "history exposed a save path" }
+file delete -force $historyPath
+set mixedHistory [runGame $app "SAVE /secret/mixed-path extra\nLoAd /secret/other-path extra\nhistory\nquit"]
+assertContains $mixedHistory "save PATH-REDACTED" mixedcase-save-redaction
+assertContains $mixedHistory "load PATH-REDACTED" mixedcase-load-redaction
+if {[string first "/secret/" $mixedHistory] >= 0} { error "mixed-case history exposed a path" }
+assertContains $history "Command history cleared." history-clear
+assertContains $history "Command history: empty." history-empty
+set historyInput "[string repeat "look\n" 25]history\nquit"
+set historyCap [runGame $app $historyInput]
+if {[regexp -all {^[ ]+[0-9]+\.} $historyCap] > 20} { error "history exceeded 20 entries" }
 puts "Tcl escape-room checks passed"

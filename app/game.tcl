@@ -12,10 +12,11 @@ namespace eval Game {
     variable hintsUsed 0
     variable moves 0
     variable undoStack {}
+    variable commandHistory {}
 
     proc reset {} {
-        variable room; variable inventory; variable plantAwake; variable routerOnline; variable callLive; variable mugAvailable; variable cableAvailable; variable hintDepth; variable hintsUsed; variable moves; variable undoStack
-        set room living; set inventory {}; set plantAwake 0; set routerOnline 0; set callLive 0; set mugAvailable 1; set cableAvailable 1; set hintDepth 0; set hintsUsed 0; set moves 0; set undoStack {}; catch {unset ::Game::hintStage}
+        variable room; variable inventory; variable plantAwake; variable routerOnline; variable callLive; variable mugAvailable; variable cableAvailable; variable hintDepth; variable hintsUsed; variable moves; variable undoStack; variable commandHistory
+        set room living; set inventory {}; set plantAwake 0; set routerOnline 0; set callLive 0; set mugAvailable 1; set cableAvailable 1; set hintDepth 0; set hintsUsed 0; set moves 0; set undoStack {}; set commandHistory {}; catch {unset ::Game::hintStage}
     }
     proc say {text} { puts $text }
     proc has {item} { variable inventory; expr {[lsearch -exact $inventory $item] >= 0} }
@@ -79,6 +80,21 @@ namespace eval Game {
         variable inventory
         if {[llength $inventory] == 0} { say "Inventory: empty, like your calendar after 4pm." } else { say "Inventory: [join $inventory {, }]" }
     }
+    proc recordCommand {words} {
+        variable commandHistory
+        set command [string tolower [lindex $words 0]]
+        if {$command in {save load}} { set entry "$command PATH-REDACTED" } else { set entry [join $words " "] }
+        if {[llength $commandHistory] >= 20} { set commandHistory [lrange $commandHistory 1 end] }
+        lappend commandHistory $entry
+    }
+    proc history {action} {
+        variable commandHistory
+        if {$action eq "clear"} { set commandHistory {}; say "Command history cleared."; return }
+        if {[llength $commandHistory] == 0} { say "Command history: empty."; return }
+        say "COMMAND HISTORY (most recent last)"
+        set number 1
+        foreach entry $commandHistory { say "$number. $entry"; incr number }
+    }
     proc examine {target} {
         variable room; variable plantAwake; variable routerOnline; variable callLive; variable mugAvailable; variable cableAvailable
         set target [string tolower $target]
@@ -117,7 +133,7 @@ namespace eval Game {
         if {!$completed} { say "- None yet (the journal keeps its secrets)." }
         say "Hints used: $hintsUsed"
     }
-    proc help {} { say "Commands: look | map | examine TARGET | go ROOM | take ITEM | use ITEM | inventory | journal | hint | undo | save PATH | load PATH | restart | quit" }
+    proc help {} { say "Commands: look | map | examine TARGET | go ROOM | take ITEM | use ITEM | inventory | journal | hint | undo | history | history clear | save PATH | load PATH | restart | quit" }
     proc stateData {} {
         variable room; variable inventory; variable plantAwake; variable routerOnline; variable callLive; variable mugAvailable; variable cableAvailable; variable hintDepth; variable hintsUsed; variable moves; variable hintStage
         set stage "mug"; if {$plantAwake} { set stage "router" }; if {$routerOnline} { set stage "cable" }
@@ -220,6 +236,7 @@ namespace eval Game {
         set normalizedArgument [string tolower $argument]
         set argumentCount [llength $words]
         if {$argumentCount == 0} { return 1 }
+        if {$command ne "history"} { recordCommand $words }
         switch -- $command {
             look { if {$argumentCount != 1} { say "look takes no arguments." } else { look } }
             map { if {$argumentCount != 1} { say "map takes no arguments." } else { map } }
@@ -229,6 +246,7 @@ namespace eval Game {
             use { if {$argumentCount != 2} { say "use takes one item." } else { use $normalizedArgument } }
             inventory { if {$argumentCount != 1} { say "inventory takes no arguments." } else { inventory } }
             journal { if {$argumentCount != 1} { say "journal takes no arguments." } else { journal } }
+            history { if {$argumentCount == 1} { history list } elseif {$argumentCount == 2 && $normalizedArgument eq "clear"} { history clear } else { say "history takes no arguments, or: history clear" } }
             help { if {$argumentCount != 1} { say "help takes no arguments." } else { help; say "Hint gives two progressive nudges for the current puzzle step." } }
             hint { if {$argumentCount != 1} { say "hint takes no arguments." } else { hint } }
             undo { if {$argumentCount != 1} { say "undo takes no arguments." } else { undo } }
@@ -241,7 +259,8 @@ namespace eval Game {
         return 1
     }
     proc run {{loadPath ""}} {
-        if {$loadPath eq ""} { reset } else { loadState $loadPath }
+        variable commandHistory
+        if {$loadPath eq ""} { reset } else { loadState $loadPath; set commandHistory {} }
         say "404: OUTSIDE NOT FOUND"; say "A 2020 terminal escape-room about reconnecting one video call."; help; look
         while {![eof stdin]} {
             puts -nonewline "> "; flush stdout
@@ -260,7 +279,7 @@ if {$argv0 eq [info script]} {
         if {$arg eq "--help" || $arg eq "-h"} {
             puts "usage: game.tcl ?--help? ?--load PATH?"
             puts "Starts the 404 apartment escape room. --load resumes a validated save before accepting commands."
-            puts "Interactive commands: look, map, examine TARGET, go ROOM, take ITEM, use ITEM, inventory, journal, hint, undo, save PATH, load PATH, restart, help, quit."
+            puts "Interactive commands: look, map, examine TARGET, go ROOM, take ITEM, use ITEM, inventory, journal, hint, undo, history, history clear, save PATH, load PATH, restart, help, quit."
             exit 0
         } elseif {$arg eq "--load"} {
             incr i
