@@ -238,6 +238,10 @@ namespace eval Game {
     proc handle {line} {
         set words [regexp -all -inline {\S+} [string trim $line]]
         set command [string tolower [lindex $words 0]]
+        if {$command in {save load}} {
+            if {[catch {set words [lrange $line 0 end]}]} { say "$command path has malformed quotes."; return 1 }
+            set command [string tolower [lindex $words 0]]
+        }
         set argument [lindex $words 1]
         set normalizedArgument [string tolower $argument]
         set argumentCount [llength $words]

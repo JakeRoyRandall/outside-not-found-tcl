@@ -154,6 +154,17 @@ if {[string first "/missing/private" $failedText] >= 0} { error "failed save/loa
 assertContains $failedText "Save error: operation failed (path redacted)" failed-save-redaction
 assertContains $failedText "Load error: operation failed (path redacted)" failed-load-redaction
 assertContains $failedText "COMMAND: history" transcript-history-command
+set spacedPath [file join [pwd] "test spaced path [pid].dat"]
+set spaced [runGame $app "go kitchen\ntake mug\nsave {$spacedPath}\nrestart\nload {$spacedPath}\ninventory\nquit"]
+assertContains $spaced "Game saved" quoted-save-success
+assertContains $spaced "Inventory: mug" quoted-load-success
+file delete -force $spacedPath
+set literalPath [file join [pwd] [format {test;[literal]-%s.dat} [pid]]]
+set literal [runGame $app "save {$literalPath}\nload {$literalPath}\nquit"]
+if {[string first "HACKED" $literal] >= 0} { error "quoted filename was evaluated" }
+file delete -force $literalPath
+set malformed [runGame $app "save {unterminated path\nquit"]
+assertContains $malformed "save path has malformed quotes" malformed-quoted-path
 assertContains $history "Command history cleared." history-clear
 assertContains $history "Command history: empty." history-empty
 set historyInput "[string repeat "look\n" 25]history\nquit"
