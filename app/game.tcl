@@ -210,22 +210,24 @@ namespace eval Game {
     }
     proc loadState {path} {
         if {$path eq ""} { error "load needs a path" }
-        if {![file exists $path] || [file size $path] > 8192} { error "save is missing or too large" }
-        set channel [open $path r]; set raw [read $channel 8192]; close $channel
-        if {[catch {dict size $raw}]} { error "save is not a valid state dict" }
-        validateState $raw
+        set raw [readValidatedSave $path]
         restoreState $raw
         variable undoStack
         set undoStack {}
     }
     proc inspectSave {path} {
-        if {$path eq ""} { error "inspect-save needs a path" }
-        if {![file exists $path] || [file size $path] > 8192} { error "save is missing or too large" }
-        set channel [open $path r]; set raw [read $channel 8192]; close $channel
-        if {[catch {dict size $raw}]} { error "save is not a valid state dict" }
-        validateState $raw
+        set raw [readValidatedSave $path]
         set completed [expr {[dict get $raw callLive] ? "yes" : "no"}]
         return "SAVE INSPECTION\nroom: [dict get $raw room]\nmoves: [dict get $raw moves]\nhints: [dict get $raw hintsUsed]\ncall complete: $completed"
+    }
+    proc readValidatedSave {path} {
+        if {$path eq ""} { error "save needs a path" }
+        if {![file exists $path]} { error "save is missing or too large" }
+        if {[catch {set channel [open $path r]; fconfigure $channel -translation binary -encoding binary; set raw [read $channel 8193]; close $channel} error]} { catch {close $channel}; error $error }
+        if {[string length $raw] > 8192} { error "save is missing or too large" }
+        if {[catch {dict size $raw}]} { error "save is not a valid state dict" }
+        validateState $raw
+        return $raw
     }
     proc hint {} {
         variable hintDepth; variable hintsUsed; variable plantAwake; variable routerOnline; variable callLive
