@@ -240,8 +240,9 @@ namespace eval Game {
         }
         return 1
     }
-    proc run {} {
-        reset; say "404: OUTSIDE NOT FOUND"; say "A 2020 terminal escape-room about reconnecting one video call."; help; look
+    proc run {{loadPath ""}} {
+        if {$loadPath eq ""} { reset } else { loadState $loadPath }
+        say "404: OUTSIDE NOT FOUND"; say "A 2020 terminal escape-room about reconnecting one video call."; help; look
         while {![eof stdin]} {
             puts -nonewline "> "; flush stdout
             if {[gets stdin line] < 0} { break }
@@ -251,4 +252,26 @@ namespace eval Game {
     }
 }
 
-if {$argv0 eq [info script]} { Game::run }
+if {$argv0 eq [info script]} {
+    set loadPath ""
+    set i 0
+    while {$i < [llength $argv]} {
+        set arg [lindex $argv $i]
+        if {$arg eq "--help" || $arg eq "-h"} {
+            puts "usage: game.tcl ?--help? ?--load PATH?"
+            puts "Starts the 404 apartment escape room. --load resumes a validated save before accepting commands."
+            puts "Interactive commands: look, map, examine TARGET, go ROOM, take ITEM, use ITEM, inventory, journal, hint, undo, save PATH, load PATH, restart, help, quit."
+            exit 0
+        } elseif {$arg eq "--load"} {
+            incr i
+            if {$i >= [llength $argv] || [lindex $argv $i] eq ""} { puts stderr "error: --load requires PATH"; exit 2 }
+            set loadPath [lindex $argv $i]
+        } else {
+            puts stderr "error: unknown option $arg"
+            puts stderr "usage: game.tcl ?--help? ?--load PATH?"
+            exit 2
+        }
+        incr i
+    }
+    if {[catch {Game::run $loadPath} error]} { puts stderr "error: $error"; exit 2 }
+}
