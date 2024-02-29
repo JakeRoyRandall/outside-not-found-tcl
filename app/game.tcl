@@ -13,12 +13,16 @@ namespace eval Game {
     variable moves 0
     variable undoStack {}
     variable commandHistory {}
+    variable transcriptChannel ""
 
     proc reset {} {
         variable room; variable inventory; variable plantAwake; variable routerOnline; variable callLive; variable mugAvailable; variable cableAvailable; variable hintDepth; variable hintsUsed; variable moves; variable undoStack; variable commandHistory
         set room living; set inventory {}; set plantAwake 0; set routerOnline 0; set callLive 0; set mugAvailable 1; set cableAvailable 1; set hintDepth 0; set hintsUsed 0; set moves 0; set undoStack {}; set commandHistory {}; catch {unset ::Game::hintStage}
     }
-    proc say {text} { puts $text }
+    proc say {text} { variable transcriptChannel; puts $text; if {$transcriptChannel ne ""} { puts $transcriptChannel $text; flush $transcriptChannel } }
+    proc sayWithTranscript {text transcriptText} { variable transcriptChannel; puts $text; if {$transcriptChannel ne ""} { puts $transcriptChannel $transcriptText; flush $transcriptChannel } }
+    proc openTranscript {path} { variable transcriptChannel; if {$path eq ""} { return }; set transcriptChannel [open $path {WRONLY CREAT EXCL}]; fconfigure $transcriptChannel -encoding utf-8 -translation lf }
+    proc closeTranscript {} { variable transcriptChannel; if {$transcriptChannel ne ""} { catch {close $transcriptChannel}; set transcriptChannel "" } }
     proc has {item} { variable inventory; expr {[lsearch -exact $inventory $item] >= 0} }
     proc add {item} { variable inventory; if {![has $item]} { lappend inventory $item } }
     proc remove {item} { variable inventory; set index [lsearch -exact $inventory $item]; if {$index >= 0} { set inventory [lreplace $inventory $index $index] } }
@@ -86,7 +90,9 @@ namespace eval Game {
         if {$command in {save load}} { set entry "$command PATH-REDACTED" } else { set entry [join $words " "] }
         if {[llength $commandHistory] >= 20} { set commandHistory [lrange $commandHistory 1 end] }
         lappend commandHistory $entry
+        logCommand $entry
     }
+    proc logCommand {entry} { variable transcriptChannel; if {$transcriptChannel ne ""} { puts $transcriptChannel "COMMAND: $entry"; flush $transcriptChannel } }
     proc history {action} {
         variable commandHistory
         if {$action eq "clear"} { set commandHistory {}; say "Command history cleared."; return }
@@ -236,7 +242,7 @@ namespace eval Game {
         set normalizedArgument [string tolower $argument]
         set argumentCount [llength $words]
         if {$argumentCount == 0} { return 1 }
-        if {$command ne "history"} { recordCommand $words }
+        if {$command ne "history"} { recordCommand $words } else { logCommand [join $words " "] }
         switch -- $command {
             look { if {$argumentCount != 1} { say "look takes no arguments." } else { look } }
             map { if {$argumentCount != 1} { say "map takes no arguments." } else { map } }
@@ -250,16 +256,17 @@ namespace eval Game {
             help { if {$argumentCount != 1} { say "help takes no arguments." } else { help; say "Hint gives two progressive nudges for the current puzzle step." } }
             hint { if {$argumentCount != 1} { say "hint takes no arguments." } else { hint } }
             undo { if {$argumentCount != 1} { say "undo takes no arguments." } else { undo } }
-            save { if {$argumentCount != 2} { say "save takes one path." } else { if {[catch {saveState $argument} error]} { say "Save error: $error" } else { say "Game saved." } } }
-            load { if {$argumentCount != 2} { say "load takes one path." } else { if {[catch {loadState $argument} error]} { say "Load error: $error" } else { say "Game loaded."; look } } }
+            save { if {$argumentCount != 2} { say "save takes one path." } else { if {[catch {saveState $argument} error]} { sayWithTranscript "Save error: $error" "Save error: operation failed (path redacted)" } else { say "Game saved." } } }
+            load { if {$argumentCount != 2} { say "load takes one path." } else { if {[catch {loadState $argument} error]} { sayWithTranscript "Load error: $error" "Load error: operation failed (path redacted)" } else { say "Game loaded."; look } } }
             restart { reset; say "Fresh meeting, fresh hope."; look }
             quit - exit { return 0 }
             default { say "Unknown command. Type help for the tiny command list." }
         }
         return 1
     }
-    proc run {{loadPath ""}} {
+    proc run {{loadPath ""} {transcriptPath ""}} {
         variable commandHistory
+        openTranscript $transcriptPath
         if {$loadPath eq ""} { reset } else { loadState $loadPath; set commandHistory {} }
         say "404: OUTSIDE NOT FOUND"; say "A 2020 terminal escape-room about reconnecting one video call."; help; look
         while {![eof stdin]} {
@@ -268,16 +275,18 @@ namespace eval Game {
             if {![handle $line]} { break }
         }
         say "Session closed. The plant remains manager."
+        closeTranscript
     }
 }
 
 if {$argv0 eq [info script]} {
     set loadPath ""
+    set transcriptPath ""
     set i 0
     while {$i < [llength $argv]} {
         set arg [lindex $argv $i]
         if {$arg eq "--help" || $arg eq "-h"} {
-            puts "usage: game.tcl ?--help? ?--load PATH?"
+            puts "usage: game.tcl ?--help? ?--load PATH? ?--transcript PATH?"
             puts "Starts the 404 apartment escape room. --load resumes a validated save before accepting commands."
             puts "Interactive commands: look, map, examine TARGET, go ROOM, take ITEM, use ITEM, inventory, journal, hint, undo, history, history clear, save PATH, load PATH, restart, help, quit."
             exit 0
@@ -285,12 +294,16 @@ if {$argv0 eq [info script]} {
             incr i
             if {$i >= [llength $argv] || [lindex $argv $i] eq ""} { puts stderr "error: --load requires PATH"; exit 2 }
             set loadPath [lindex $argv $i]
+        } elseif {$arg eq "--transcript"} {
+            incr i
+            if {$i >= [llength $argv] || [lindex $argv $i] eq ""} { puts stderr "error: --transcript requires PATH"; exit 2 }
+            set transcriptPath [lindex $argv $i]
         } else {
             puts stderr "error: unknown option $arg"
-            puts stderr "usage: game.tcl ?--help? ?--load PATH?"
+            puts stderr "usage: game.tcl ?--help? ?--load PATH? ?--transcript PATH?"
             exit 2
         }
         incr i
     }
-    if {[catch {Game::run $loadPath} error]} { puts stderr "error: $error"; exit 2 }
+    if {[catch {Game::run $loadPath $transcriptPath} error]} { Game::closeTranscript; puts stderr "error: $error"; exit 2 }
 }

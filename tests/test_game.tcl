@@ -147,6 +147,13 @@ set mixedHistory [runGame $app "SAVE /secret/mixed-path extra\nLoAd /secret/othe
 assertContains $mixedHistory "save PATH-REDACTED" mixedcase-save-redaction
 assertContains $mixedHistory "load PATH-REDACTED" mixedcase-load-redaction
 if {[string first "/secret/" $mixedHistory] >= 0} { error "mixed-case history exposed a path" }
+set failedTranscriptPath [file join [pwd] "test-failed-transcript-[pid].log"]
+set failedTranscript [exec /usr/bin/tclsh $app --transcript $failedTranscriptPath << "SAVE /missing/private/path.dat\nLOAD /missing/private/path.dat\nhistory\nquit\n"]
+set failedChannel [open $failedTranscriptPath r]; set failedText [read $failedChannel]; close $failedChannel; file delete -force $failedTranscriptPath
+if {[string first "/missing/private" $failedText] >= 0} { error "failed save/load path leaked into transcript" }
+assertContains $failedText "Save error: operation failed (path redacted)" failed-save-redaction
+assertContains $failedText "Load error: operation failed (path redacted)" failed-load-redaction
+assertContains $failedText "COMMAND: history" transcript-history-command
 assertContains $history "Command history cleared." history-clear
 assertContains $history "Command history: empty." history-empty
 set historyInput "[string repeat "look\n" 25]history\nquit"
