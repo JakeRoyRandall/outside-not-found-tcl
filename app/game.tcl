@@ -218,6 +218,15 @@ namespace eval Game {
         variable undoStack
         set undoStack {}
     }
+    proc inspectSave {path} {
+        if {$path eq ""} { error "inspect-save needs a path" }
+        if {![file exists $path] || [file size $path] > 8192} { error "save is missing or too large" }
+        set channel [open $path r]; set raw [read $channel 8192]; close $channel
+        if {[catch {dict size $raw}]} { error "save is not a valid state dict" }
+        validateState $raw
+        set completed [expr {[dict get $raw callLive] ? "yes" : "no"}]
+        return "SAVE INSPECTION\nroom: [dict get $raw room]\nmoves: [dict get $raw moves]\nhints: [dict get $raw hintsUsed]\ncall complete: $completed"
+    }
     proc hint {} {
         variable hintDepth; variable hintsUsed; variable plantAwake; variable routerOnline; variable callLive
         if {$callLive} { say "No hint needed: the call is live."; return }
@@ -286,11 +295,12 @@ namespace eval Game {
 if {$argv0 eq [info script]} {
     set loadPath ""
     set transcriptPath ""
+    set inspectPath ""
     set i 0
     while {$i < [llength $argv]} {
         set arg [lindex $argv $i]
         if {$arg eq "--help" || $arg eq "-h"} {
-            puts "usage: game.tcl ?--help? ?--load PATH? ?--transcript PATH?"
+            puts "usage: game.tcl ?--help? ?--load PATH? ?--transcript PATH? ?--inspect-save PATH?"
             puts "Starts the 404 apartment escape room. --load resumes a validated save before accepting commands."
             puts "Interactive commands: look, map, examine TARGET, go ROOM, take ITEM, use ITEM, inventory, journal, hint, undo, history, history clear, save PATH, load PATH, restart, help, quit."
             exit 0
@@ -302,12 +312,22 @@ if {$argv0 eq [info script]} {
             incr i
             if {$i >= [llength $argv] || [lindex $argv $i] eq ""} { puts stderr "error: --transcript requires PATH"; exit 2 }
             set transcriptPath [lindex $argv $i]
+        } elseif {$arg eq "--inspect-save"} {
+            incr i
+            if {$i >= [llength $argv] || [lindex $argv $i] eq ""} { puts stderr "error: --inspect-save requires PATH"; exit 2 }
+            set inspectPath [lindex $argv $i]
         } else {
             puts stderr "error: unknown option $arg"
-            puts stderr "usage: game.tcl ?--help? ?--load PATH? ?--transcript PATH?"
+            puts stderr "usage: game.tcl ?--help? ?--load PATH? ?--transcript PATH? ?--inspect-save PATH?"
             exit 2
         }
         incr i
+    }
+    if {$inspectPath ne ""} {
+        if {$loadPath ne "" || $transcriptPath ne ""} { puts stderr "error: --inspect-save cannot be combined with --load or --transcript"; exit 2 }
+        if {[catch {Game::inspectSave $inspectPath} error]} { puts stderr "error: $error"; exit 2 }
+        puts $error
+        exit 0
     }
     if {[catch {Game::run $loadPath $transcriptPath} error]} { Game::closeTranscript; puts stderr "error: $error"; exit 2 }
 }

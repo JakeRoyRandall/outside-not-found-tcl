@@ -20,3 +20,5 @@ Run tests:
 ```sh
 /usr/bin/tclsh tests/test_game.tcl
 ```
+
+Use `--inspect-save PATH` for a read-only summary of a validated save (room, moves, hints, and call completion). It prints the summary and exits without starting a game, changing the save, or evaluating its contents; it cannot be combined with `--load` or `--transcript`.
