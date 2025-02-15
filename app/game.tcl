@@ -11,15 +11,17 @@ namespace eval Game {
     variable hintDepth 0
     variable hintsUsed 0
     variable moves 0
+    variable undoStack {}
 
     proc reset {} {
-        variable room; variable inventory; variable plantAwake; variable routerOnline; variable callLive; variable mugAvailable; variable cableAvailable; variable hintDepth; variable hintsUsed; variable moves
-        set room living; set inventory {}; set plantAwake 0; set routerOnline 0; set callLive 0; set mugAvailable 1; set cableAvailable 1; set hintDepth 0; set hintsUsed 0; set moves 0; catch {unset ::Game::hintStage}
+        variable room; variable inventory; variable plantAwake; variable routerOnline; variable callLive; variable mugAvailable; variable cableAvailable; variable hintDepth; variable hintsUsed; variable moves; variable undoStack
+        set room living; set inventory {}; set plantAwake 0; set routerOnline 0; set callLive 0; set mugAvailable 1; set cableAvailable 1; set hintDepth 0; set hintsUsed 0; set moves 0; set undoStack {}; catch {unset ::Game::hintStage}
     }
     proc say {text} { puts $text }
     proc has {item} { variable inventory; expr {[lsearch -exact $inventory $item] >= 0} }
     proc add {item} { variable inventory; if {![has $item]} { lappend inventory $item } }
     proc remove {item} { variable inventory; set index [lsearch -exact $inventory $item]; if {$index >= 0} { set inventory [lreplace $inventory $index $index] } }
+    proc remember {} { variable undoStack; if {[llength $undoStack] >= 20} { set undoStack [lrange $undoStack 1 end] }; lappend undoStack [stateData] }
 
     proc title {} {
         variable room
@@ -43,20 +45,20 @@ namespace eval Game {
         set destinations {living living kitchen kitchen office office balcony balcony}
         if {![dict exists $destinations $destination]} { say "You cannot go there from here. Try living, kitchen, office, or balcony."; return }
         if {$room ne "living" && $destination ne "living"} { say "Only the living room connects to that doorway."; return }
-        set room $destination; incr moves; look
+        remember; set room $destination; incr moves; look
     }
     proc take {item} {
         variable room; variable mugAvailable; variable cableAvailable; variable moves
-        if {$item eq "mug" && $room eq "kitchen" && $mugAvailable} { set mugAvailable 0; add mug; incr moves; say "Taken: mug. It hums with lukewarm purpose."; return }
-        if {$item eq "cable" && $room eq "office" && $cableAvailable} { set cableAvailable 0; add cable; incr moves; say "Taken: network cable. It has one job."; return }
+        if {$item eq "mug" && $room eq "kitchen" && $mugAvailable} { remember; set mugAvailable 0; add mug; incr moves; say "Taken: mug. It hums with lukewarm purpose."; return }
+        if {$item eq "cable" && $room eq "office" && $cableAvailable} { remember; set cableAvailable 0; add cable; incr moves; say "Taken: network cable. It has one job."; return }
         say "That item is not here. Look around, or stop trying to steal the walls."
     }
     proc use {item} {
         variable room; variable plantAwake; variable routerOnline; variable callLive; variable hintsUsed; variable moves
         if {![has $item]} { say "You are not carrying that."; return }
-        if {$item eq "mug" && $room eq "balcony"} { remove mug; set plantAwake 1; add leaf-key; incr moves; say "You water the manager plant. It hands you a leaf-shaped key and schedules a 1:1."; return }
-        if {$item eq "leaf-key" && $room eq "office"} { remove leaf-key; set routerOnline 1; incr moves; say "The leaf-key fits the router's tiny reset slot. The internet remembers you."; return }
-        if {$item eq "cable" && $room eq "office" && $routerOnline} { remove cable; set callLive 1; incr moves; say "Cable connected. The video call returns: 'You're still on mute.' You win in $moves moves, with $hintsUsed hint(s) used."; return }
+        if {$item eq "mug" && $room eq "balcony"} { remember; remove mug; set plantAwake 1; add leaf-key; incr moves; say "You water the manager plant. It hands you a leaf-shaped key and schedules a 1:1."; return }
+        if {$item eq "leaf-key" && $room eq "office"} { remember; remove leaf-key; set routerOnline 1; incr moves; say "The leaf-key fits the router's tiny reset slot. The internet remembers you."; return }
+        if {$item eq "cable" && $room eq "office" && $routerOnline} { remember; remove cable; set callLive 1; incr moves; say "Cable connected. The video call returns: 'You're still on mute.' You win in $moves moves, with $hintsUsed hint(s) used."; return }
         say "That combination does nothing useful yet."
     }
     proc inventory {} {
@@ -87,7 +89,7 @@ namespace eval Game {
         say "You cannot examine that here. Look around or examine something visible or carried."
     }
     proc journal {} {
-        variable plantAwake; variable routerOnline; variable callLive; variable inventory
+        variable plantAwake; variable routerOnline; variable callLive; variable inventory; variable hintsUsed
         say "JOURNAL"
         say "Observed clues:"
         say "- The video call is frozen."
@@ -99,8 +101,9 @@ namespace eval Game {
         if {$routerOnline} { say "- Reset the router with the leaf-key."; incr completed }
         if {$callLive} { say "- Reconnected the video call."; incr completed }
         if {!$completed} { say "- None yet (the journal keeps its secrets)." }
+        say "Hints used: $hintsUsed"
     }
-    proc help {} { say "Commands: look | examine TARGET | go ROOM | take ITEM | use ITEM | inventory | journal | hint | save PATH | load PATH | restart | quit" }
+    proc help {} { say "Commands: look | examine TARGET | go ROOM | take ITEM | use ITEM | inventory | journal | hint | undo | save PATH | load PATH | restart | quit" }
     proc stateData {} {
         variable room; variable inventory; variable plantAwake; variable routerOnline; variable callLive; variable mugAvailable; variable cableAvailable; variable hintDepth; variable hintsUsed; variable moves; variable hintStage
         set stage "mug"; if {$plantAwake} { set stage "router" }; if {$routerOnline} { set stage "cable" }
@@ -135,6 +138,32 @@ namespace eval Game {
         if {[dict get $data callLive] && [lsearch -exact $items cable] >= 0} { error "save retains a connected cable" }
         return 1
     }
+    proc restoreState {data} {
+        variable room; variable inventory; variable plantAwake; variable routerOnline; variable callLive; variable mugAvailable; variable cableAvailable; variable hintDepth; variable hintsUsed; variable moves; variable hintStage
+        set room [dict get $data room]
+        set inventory [dict get $data inventory]
+        set plantAwake [dict get $data plantAwake]
+        set routerOnline [dict get $data routerOnline]
+        set callLive [dict get $data callLive]
+        set mugAvailable [dict get $data mugAvailable]
+        set cableAvailable [dict get $data cableAvailable]
+        set hintDepth [dict get $data hintDepth]
+        set hintsUsed [dict get $data hintsUsed]
+        set moves [dict get $data moves]
+        set hintStage [dict get $data hintStage]
+    }
+    proc undo {} {
+        variable undoStack; variable hintsUsed
+        if {[llength $undoStack] == 0} { say "Nothing to undo."; return }
+        set preservedHints $hintsUsed
+        set last [expr {[llength $undoStack] - 1}]
+        set previous [lindex $undoStack $last]
+        if {$last == 0} { set undoStack {} } else { set undoStack [lrange $undoStack 0 [expr {$last - 1}]] }
+        restoreState $previous
+        if {$hintsUsed < $preservedHints} { set hintsUsed $preservedHints }
+        say "Undid last action."
+        look
+    }
     proc saveState {path} {
         if {$path eq ""} { error "save needs a path" }
         set temp "${path}.tmp-[pid]"
@@ -149,8 +178,9 @@ namespace eval Game {
         set channel [open $path r]; set raw [read $channel 8192]; close $channel
         if {[catch {dict size $raw}]} { error "save is not a valid state dict" }
         validateState $raw
-        variable room; variable inventory; variable plantAwake; variable routerOnline; variable callLive; variable mugAvailable; variable cableAvailable; variable hintDepth; variable hintsUsed; variable moves; variable hintStage
-        set room [dict get $raw room]; set inventory [dict get $raw inventory]; set plantAwake [dict get $raw plantAwake]; set routerOnline [dict get $raw routerOnline]; set callLive [dict get $raw callLive]; set mugAvailable [dict get $raw mugAvailable]; set cableAvailable [dict get $raw cableAvailable]; set hintDepth [dict get $raw hintDepth]; set hintsUsed [dict get $raw hintsUsed]; set moves [dict get $raw moves]; set hintStage [dict get $raw hintStage]
+        restoreState $raw
+        variable undoStack
+        set undoStack {}
     }
     proc hint {} {
         variable hintDepth; variable hintsUsed; variable plantAwake; variable routerOnline; variable callLive
@@ -186,6 +216,7 @@ namespace eval Game {
             journal { if {$argumentCount != 1} { say "journal takes no arguments." } else { journal } }
             help { if {$argumentCount != 1} { say "help takes no arguments." } else { help; say "Hint gives two progressive nudges for the current puzzle step." } }
             hint { if {$argumentCount != 1} { say "hint takes no arguments." } else { hint } }
+            undo { if {$argumentCount != 1} { say "undo takes no arguments." } else { undo } }
             save { if {$argumentCount != 2} { say "save takes one path." } else { if {[catch {saveState $argument} error]} { say "Save error: $error" } else { say "Game saved." } } }
             load { if {$argumentCount != 2} { say "load takes one path." } else { if {[catch {loadState $argument} error]} { say "Load error: $error" } else { say "Game loaded."; look } } }
             restart { reset; say "Fresh meeting, fresh hope."; look }

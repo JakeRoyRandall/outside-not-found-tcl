@@ -86,6 +86,33 @@ set stagePath [file join [pwd] "test-stage-[pid].dat"]
 set staged [runGame $app "hint\ngo kitchen\ntake mug\ngo living\ngo balcony\nuse mug\nsave $stagePath\nrestart\nload $stagePath\nhint\nquit"]
 assertContains $staged "leaf-key has one oddly specific destination" stage-transition-hint-resets
 file delete -force $stagePath
+set undoBasic [runGame $app "go kitchen\ntake mug\nundo\ninventory\nundo\nlook\nquit"]
+assertContains $undoBasic "Undid last action." undo-basic-message
+assertContains $undoBasic "Inventory: empty" undo-restores-inventory
+assertContains $undoBasic "== Living Room ==" undo-restores-room
+set undoPuzzle [runGame $app "go kitchen\ntake mug\ngo living\ngo balcony\nuse mug\nundo\ninventory\njournal\nquit"]
+assertContains $undoPuzzle "Inventory: mug" undo-restores-puzzle-item
+if {[string first "Watered the manager plant" $undoPuzzle] >= 0} { error "undo did not restore plant puzzle state" }
+set undoMoves [runGame $app "go kitchen\ntake mug\ngo living\ngo balcony\nuse mug\ngo living\ngo office\ntake cable\nuse leaf-key\nuse cable\nundo\nuse cable\nquit"]
+assertContains $undoMoves "You win in 10 moves" undo-restores-move-count
+set undoInfo [runGame $app "journal\nhint\njournal\nlook\ninventory\nundo\nquit"]
+assertContains $undoInfo "Nothing to undo." info-does-not-record-history
+assertContains $undoInfo "Hints used: 1" hint-is-preserved
+set undoRestart [runGame $app "go kitchen\nrestart\nundo\nquit"]
+assertContains $undoRestart "Nothing to undo." restart-clears-history
+set undoLoadPath [file join [pwd] "test-undo-load-[pid].dat"]
+set undoLoad [runGame $app "go kitchen\ntake mug\nsave $undoLoadPath\ngo living\nload $undoLoadPath\nundo\nquit"]
+assertContains $undoLoad "Game loaded" load-clears-history
+assertContains $undoLoad "Nothing to undo." load-clears-history-result
+file delete -force $undoLoadPath
+set manyActions ""
+for {set i 0} {$i < 21} {incr i} {
+    if {$i % 2 == 0} { append manyActions "go kitchen\n" } else { append manyActions "go living\n" }
+}
+append manyActions [string repeat "undo\n" 21] "quit\n"
+set undoCap [runGame $app $manyActions]
+if {[regexp -all {Undid last action\.} $undoCap] != 20} { error "undo history was not capped at 20 entries" }
+assertContains $undoCap "Nothing to undo." undo-cap-exhausted
 set badPath [file join [pwd] "test-invalid-[pid].dat"]
 set bad [open $badPath w]; puts -nonewline $bad "schema 1 room living inventory {mug mug} plantAwake 0 routerOnline 0 callLive 0 mugAvailable 1 cableAvailable 1 hintDepth 0 hintsUsed 0 moves 0 hintStage mug"; close $bad
 set invalid [runGame $app "go kitchen\ntake mug\nload $badPath\ninventory\nquit"]
