@@ -38,6 +38,17 @@ set examineContext [runGame $app "go kitchen\nexamine cup\ntake mug\nexamine mug
 assertContains $examineContext "sturdy enough for a small rescue mission" examine-carried-item
 assertContains $examineContext "wilted and judging" examine-thirsty-plant
 assertContains $examineContext "alert, leafy" examine-awake-plant
+set mapAllRooms [runGame $app "map\ngo kitchen\nmap\ngo living\ngo office\nmap\ngo living\ngo balcony\nmap\nquit"]
+assertContains $mapAllRooms "APARTMENT MAP (you are in Living Room)" map-living
+assertContains $mapAllRooms "APARTMENT MAP (you are in Kitchen)" map-kitchen
+assertContains $mapAllRooms "APARTMENT MAP (you are in Home Office)" map-office
+assertContains $mapAllRooms "APARTMENT MAP (you are in Balcony)" map-balcony
+assertContains $mapAllRooms "Connections from here: living room" map-connections
+set mapOnly [runGame $app "map\nquit"]
+if {[string first "mug" $mapOnly] >= 0 || [string first "cable" $mapOnly] >= 0 || [string first "leaf-key" $mapOnly] >= 0} { error "map revealed puzzle items" }
+set mapReadonly [runGame $app "inventory\nmap\ninventory\nmap extra\nquit"]
+if {[regexp -all {Inventory: empty} $mapReadonly] != 2} { error "map changed inventory state" }
+assertContains $mapReadonly "map takes no arguments" map-strict-arity
 set freshJournal [runGame $app "journal\nquit"]
 assertContains $freshJournal "JOURNAL" journal-command
 assertContains $freshJournal "None yet" journal-no-progress

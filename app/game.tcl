@@ -40,6 +40,20 @@ namespace eval Game {
         if {$routerOnline} { say "The router light is reassuringly green." }
         if {$callLive} { say "Jordan's face is back on screen. The meeting survives." }
     }
+    proc map {} {
+        variable room
+        say "APARTMENT MAP (you are in [title])"
+        say "                 Balcony"
+        say "                    |"
+        say "Kitchen ---- Living Room ---- Home Office"
+        array set connections {
+            living "kitchen, office, balcony"
+            kitchen "living room"
+            office "living room"
+            balcony "living room"
+        }
+        say "Connections from here: $connections($room)"
+    }
     proc go {destination} {
         variable room; variable moves
         set destinations {living living kitchen kitchen office office balcony balcony}
@@ -92,7 +106,7 @@ namespace eval Game {
         variable plantAwake; variable routerOnline; variable callLive; variable inventory; variable hintsUsed
         say "JOURNAL"
         say "Observed clues:"
-        say "- The video call is frozen."
+        say "- The video call was frozen when you arrived."
         say "- The apartment has a kitchen, office, and balcony."
         if {[llength $inventory] > 0} { say "Carrying: [join $inventory {, }]" } else { say "Carrying: nothing" }
         say "Completed objectives:"
@@ -103,7 +117,7 @@ namespace eval Game {
         if {!$completed} { say "- None yet (the journal keeps its secrets)." }
         say "Hints used: $hintsUsed"
     }
-    proc help {} { say "Commands: look | examine TARGET | go ROOM | take ITEM | use ITEM | inventory | journal | hint | undo | save PATH | load PATH | restart | quit" }
+    proc help {} { say "Commands: look | map | examine TARGET | go ROOM | take ITEM | use ITEM | inventory | journal | hint | undo | save PATH | load PATH | restart | quit" }
     proc stateData {} {
         variable room; variable inventory; variable plantAwake; variable routerOnline; variable callLive; variable mugAvailable; variable cableAvailable; variable hintDepth; variable hintsUsed; variable moves; variable hintStage
         set stage "mug"; if {$plantAwake} { set stage "router" }; if {$routerOnline} { set stage "cable" }
@@ -208,6 +222,7 @@ namespace eval Game {
         if {$argumentCount == 0} { return 1 }
         switch -- $command {
             look { if {$argumentCount != 1} { say "look takes no arguments." } else { look } }
+            map { if {$argumentCount != 1} { say "map takes no arguments." } else { map } }
             examine { if {$argumentCount != 2} { say "examine takes one target." } else { examine $normalizedArgument } }
             go { if {$argumentCount != 2} { say "go takes one room." } else { go $normalizedArgument } }
             take { if {$argumentCount != 2} { say "take takes one item." } else { take $normalizedArgument } }
